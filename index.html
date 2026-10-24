@@ -25,10 +25,10 @@
         <div class="bg-gradient-to-r from-purple-900/50 via-slate-900 to-indigo-950 p-6 border-b border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div class="flex items-center gap-4">
                 <div class="relative">
-                    <div class="w-16 h-16 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 p-1 flex items-center justify-center shadow-lg shadow-purple-500/20">
-                        <img src="https://yt3.googleusercontent.com/ytc/AIdro_k...=s160-c-k-c0x00ffffff-no-rj" alt="0llie666" class="w-full h-full object-cover rounded-full bg-slate-800" onerror="this.src='https://via.placeholder.com/150/1e1b4b/9333ea?text=06'">
+                    <div class="w-14 h-14 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 p-1 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                        <div class="w-full h-full bg-slate-900 rounded-full flex items-center justify-center text-purple-400 font-bold text-xl font-gaming">06</div>
                     </div>
-                    <span class="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-slate-900 rounded-full"></span>
+                    <span class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-slate-900 rounded-full"></span>
                 </div>
                 <div>
                     <h1 class="font-gaming text-2xl font-bold tracking-wide text-white flex items-center gap-2">
@@ -45,7 +45,7 @@
         <!-- Video Grid Container -->
         <div class="p-6">
             <div id="video-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- Dynamic Videos injected here -->
+                <!-- Videos werden hier dynamisch eingefügt -->
             </div>
         </div>
     </div>
@@ -63,85 +63,78 @@
     </div>
 
     <script>
-        const CHANNEL_ID = 'UCanLxec_3PUi9vaxXpk1wKw';
-
-        // Nutzung mehrerer CORS-Proxies als Fallback für absolute Zuverlässigkeit
-        const PROXIES = [
-            url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-            url => `https://corsproxy.io/?${encodeURIComponent(url)}`
+        // Standard-Videos von deinem Kanal als sicherer Fallback (werden überschrieben, wenn Feed lädt)
+        const FALLBACK_VIDEOS = [
+            { videoId: 'GOY6AXwcsW0', title: '0llie666 LAN Party X Penta Club e.V. - Day III', date: 'Neuestes Video' },
+            { videoId: 'DF7qrqL_wSw', title: '0llie666 LAN Party - Official Trailer', date: 'Highlight' },
+            { videoId: 'qvGH6nbx3IU', title: '0llie666 zu Gast bei Streamvibes #Podcast', date: 'Highlight' }
         ];
 
-        async function fetchRSS() {
+        const CHANNEL_ID = 'UCanLxec_3PUi9vaxXpk1wKw';
+
+        async function fetchChannelVideos() {
             const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`;
             
-            for (const proxy of PROXIES) {
-                try {
-                    const res = await fetch(proxy(rssUrl));
-                    if (res.ok) {
-                        const xmlText = await res.text();
-                        const parser = new DOMParser();
-                        const xml = parser.parseFromString(xmlText, "text/xml");
-                        const entries = Array.from(xml.querySelectorAll("entry"));
-                        
-                        if (entries.length > 0) {
-                            return entries.map(entry => {
-                                const videoId = entry.querySelector("videoId") ? entry.querySelector("videoId").textContent : entry.querySelector("id").textContent.replace("yt:video:", "");
-                                const title = entry.querySelector("title").textContent;
-                                const published = entry.querySelector("published").textContent;
-                                return { videoId, title, published };
-                            });
+            try {
+                const response = await fetch(proxyUrl);
+                if (response.ok) {
+                    const data = await response.json();
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(data.contents, "text/xml");
+                    const entries = xmlDoc.getElementsByTagName("entry");
+
+                    if (entries.length > 0) {
+                        const list = [];
+                        for (let i = 0; i < Math.min(entries.length, 6); i++) {
+                            const entry = entries[i];
+                            const videoId = entry.getElementsByTagName("yt:videoId")[0]?.textContent || '';
+                            const title = entry.getElementsByTagName("title")[0]?.textContent || '';
+                            const pubDate = entry.getElementsByTagName("published")[0]?.textContent || '';
+                            const dateStr = pubDate ? new Date(pubDate).toLocaleDateString('de-DE') : '';
+                            if (videoId) {
+                                list.push({ videoId, title, date: dateStr });
+                            }
                         }
+                        if (list.length > 0) return list;
                     }
-                } catch (e) {
-                    console.warn("Proxy failed, trying next...", e);
                 }
+            } catch (err) {
+                console.log('Verwendung der integrierten Videos:', err);
             }
-            return null;
+            return FALLBACK_VIDEOS;
         }
 
-        async function loadFeed() {
+        async function renderVideos() {
             const grid = document.getElementById('video-grid');
-            const videos = await fetchRSS();
+            const videos = await fetchChannelVideos();
 
-            if (videos && videos.length > 0) {
-                grid.innerHTML = '';
-                videos.forEach(video => {
-                    const thumbnail = `https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`;
-                    const date = new Date(video.published).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            grid.innerHTML = '';
+            videos.forEach(video => {
+                const card = document.createElement('div');
+                card.className = 'group bg-slate-950 border border-slate-800 rounded-xl overflow-hidden hover:border-purple-500/50 transition-all duration-300 flex flex-col cursor-pointer shadow-md hover:shadow-purple-500/10';
+                card.onclick = () => openModal(video.videoId);
 
-                    const card = document.createElement('div');
-                    card.className = 'group bg-slate-950 border border-slate-800/80 rounded-xl overflow-hidden hover:border-purple-500/50 transition-all duration-300 flex flex-col cursor-pointer shadow-md hover:shadow-purple-500/10';
-                    card.onclick = () => openModal(video.videoId);
-
-                    card.innerHTML = `
-                        <div class="relative aspect-video bg-slate-900 overflow-hidden">
-                            <img src="${thumbnail}" alt="${video.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <div class="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
-                                    <i class="fas fa-play ml-0.5"></i>
-                                </div>
-                            </div>
-                            <span class="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-0.5 rounded font-medium">YouTube</span>
-                        </div>
-                        <div class="p-4 flex flex-col flex-grow justify-between">
-                            <h3 class="font-gaming text-lg font-semibold text-white group-hover:text-purple-400 transition-colors line-clamp-2">${video.title}</h3>
-                            <div class="flex items-center justify-between text-xs text-slate-400 mt-3 pt-3 border-t border-slate-900">
-                                <span><i class="far fa-calendar-alt mr-1"></i> ${date}</span>
-                                <span class="text-purple-400 font-medium group-hover:underline">Ansehen <i class="fas fa-arrow-right ml-1"></i></span>
+                card.innerHTML = `
+                    <div class="relative aspect-video bg-slate-900 overflow-hidden">
+                        <img src="https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg" alt="${video.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <div class="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
+                                <i class="fas fa-play ml-0.5"></i>
                             </div>
                         </div>
-                    `;
-                    grid.appendChild(card);
-                });
-            } else {
-                // Fallback direct embed list if XML fails completely
-                grid.innerHTML = `
-                    <div class="col-span-full p-6 text-center text-slate-400">
-                        <p class="mb-4">Direkte Playlist-Einbindung geladen:</p>
-                        <iframe width="100%" height="450" src="https://www.youtube.com/embed/videoseries?list=UUcanLxec_3PUi9vaxXpk1wKw" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen class="rounded-xl border border-slate-800"></iframe>
+                        <span class="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-0.5 rounded font-medium">HD</span>
+                    </div>
+                    <div class="p-4 flex flex-col flex-grow justify-between">
+                        <h3 class="font-gaming text-lg font-semibold text-white group-hover:text-purple-400 transition-colors line-clamp-2">${video.title}</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-400 mt-3 pt-3 border-t border-slate-800">
+                            <span><i class="far fa-calendar-alt mr-1"></i> ${video.date}</span>
+                            <span class="text-purple-400 font-medium group-hover:underline">Abspielen <i class="fas fa-arrow-right ml-1"></i></span>
+                        </div>
                     </div>
                 `;
-            }
+                grid.appendChild(card);
+            });
         }
 
         function openModal(videoId) {
@@ -162,7 +155,7 @@
             if (e.target.id === 'video-modal') closeModal();
         });
 
-        loadFeed();
+        renderVideos();
     </script>
 </body>
 </html>
