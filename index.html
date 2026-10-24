@@ -42,120 +42,21 @@
             </a>
         </div>
 
-        <!-- Video Grid Container -->
+        <!-- Video Player Grid Container -->
         <div class="p-6">
-            <div id="video-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- Videos werden hier dynamisch eingefügt -->
+            <div class="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-800 shadow-xl bg-slate-950">
+                <!-- Embed der Upload-Playlist von @ollie6662 -->
+                <iframe 
+                    class="absolute top-0 left-0 w-full h-full"
+                    src="https://www.youtube-nocookie.com/embed/videoseries?list=UUcanLxec_3PUi9vaxXpk1wKw" 
+                    title="0llie666 YouTube Playlist" 
+                    frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                    allowfullscreen>
+                </iframe>
             </div>
         </div>
     </div>
 
-    <!-- Video Modal -->
-    <div id="video-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="relative w-full max-w-4xl bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
-            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 w-10 h-10 rounded-full flex items-center justify-center z-10 transition-colors">
-                <i class="fas fa-times"></i>
-            </button>
-            <div class="relative pt-[56.25%] w-full bg-black">
-                <iframe id="modal-iframe" class="absolute top-0 left-0 w-full h-full" src="" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Standard-Videos von deinem Kanal als sicherer Fallback (werden überschrieben, wenn Feed lädt)
-        const FALLBACK_VIDEOS = [
-            { videoId: 'GOY6AXwcsW0', title: '0llie666 LAN Party X Penta Club e.V. - Day III', date: 'Neuestes Video' },
-            { videoId: 'DF7qrqL_wSw', title: '0llie666 LAN Party - Official Trailer', date: 'Highlight' },
-            { videoId: 'qvGH6nbx3IU', title: '0llie666 zu Gast bei Streamvibes #Podcast', date: 'Highlight' }
-        ];
-
-        const CHANNEL_ID = 'UCanLxec_3PUi9vaxXpk1wKw';
-
-        async function fetchChannelVideos() {
-            const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`;
-            
-            try {
-                const response = await fetch(proxyUrl);
-                if (response.ok) {
-                    const data = await response.json();
-                    const parser = new DOMParser();
-                    const xmlDoc = parser.parseFromString(data.contents, "text/xml");
-                    const entries = xmlDoc.getElementsByTagName("entry");
-
-                    if (entries.length > 0) {
-                        const list = [];
-                        for (let i = 0; i < Math.min(entries.length, 6); i++) {
-                            const entry = entries[i];
-                            const videoId = entry.getElementsByTagName("yt:videoId")[0]?.textContent || '';
-                            const title = entry.getElementsByTagName("title")[0]?.textContent || '';
-                            const pubDate = entry.getElementsByTagName("published")[0]?.textContent || '';
-                            const dateStr = pubDate ? new Date(pubDate).toLocaleDateString('de-DE') : '';
-                            if (videoId) {
-                                list.push({ videoId, title, date: dateStr });
-                            }
-                        }
-                        if (list.length > 0) return list;
-                    }
-                }
-            } catch (err) {
-                console.log('Verwendung der integrierten Videos:', err);
-            }
-            return FALLBACK_VIDEOS;
-        }
-
-        async function renderVideos() {
-            const grid = document.getElementById('video-grid');
-            const videos = await fetchChannelVideos();
-
-            grid.innerHTML = '';
-            videos.forEach(video => {
-                const card = document.createElement('div');
-                card.className = 'group bg-slate-950 border border-slate-800 rounded-xl overflow-hidden hover:border-purple-500/50 transition-all duration-300 flex flex-col cursor-pointer shadow-md hover:shadow-purple-500/10';
-                card.onclick = () => openModal(video.videoId);
-
-                card.innerHTML = `
-                    <div class="relative aspect-video bg-slate-900 overflow-hidden">
-                        <img src="https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg" alt="${video.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <div class="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
-                                <i class="fas fa-play ml-0.5"></i>
-                            </div>
-                        </div>
-                        <span class="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-0.5 rounded font-medium">HD</span>
-                    </div>
-                    <div class="p-4 flex flex-col flex-grow justify-between">
-                        <h3 class="font-gaming text-lg font-semibold text-white group-hover:text-purple-400 transition-colors line-clamp-2">${video.title}</h3>
-                        <div class="flex items-center justify-between text-xs text-slate-400 mt-3 pt-3 border-t border-slate-800">
-                            <span><i class="far fa-calendar-alt mr-1"></i> ${video.date}</span>
-                            <span class="text-purple-400 font-medium group-hover:underline">Abspielen <i class="fas fa-arrow-right ml-1"></i></span>
-                        </div>
-                    </div>
-                `;
-                grid.appendChild(card);
-            });
-        }
-
-        function openModal(videoId) {
-            const modal = document.getElementById('video-modal');
-            const iframe = document.getElementById('modal-iframe');
-            iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
-            modal.classList.remove('hidden');
-        }
-
-        function closeModal() {
-            const modal = document.getElementById('video-modal');
-            const iframe = document.getElementById('modal-iframe');
-            iframe.src = '';
-            modal.classList.add('hidden');
-        }
-
-        document.getElementById('video-modal').addEventListener('click', (e) => {
-            if (e.target.id === 'video-modal') closeModal();
-        });
-
-        renderVideos();
-    </script>
 </body>
 </html>
