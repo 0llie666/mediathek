@@ -54,13 +54,32 @@
 
     <script>
         const API_KEY = 'AIzaSyBbyyj_VFDsgjNK3pu2DAqsX1MHqhFsRps'; 
-        // Die Upload-Playlist ID deines Kanals (leitet sich direkt aus UCanLxec... ab -> UUcanLxec...)
-        const UPLOADS_PLAYLIST_ID = 'UUcanLxec_3PUi9vaxXpk1wKw'; 
+        const CHANNEL_HANDLE = 'ollie6662'; 
         const RESULTS_PER_PAGE = 30; // 3 Spalten x 10 Zeilen
 
+        let uploadsPlaylistId = '';
         let pageTokens = ['']; 
         let currentPageIndex = 0;
         let hasMorePages = true;
+
+        async function initWidget() {
+            try {
+                // 1. Hole die Uploads-Playlist-ID direkt über den Kanal-Handle (garantiert fehlerfrei)
+                const channelRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?key=${API_KEY}&forHandle=${CHANNEL_HANDLE}&part=contentDetails`);
+                const channelData = await channelRes.json();
+
+                if (!channelData.items || channelData.items.length === 0) {
+                    throw new Error("Kanal konnte nicht gefunden werden.");
+                }
+
+                uploadsPlaylistId = channelData.items[0].contentDetails.relatedPlaylists.uploads;
+                await fetchVideosForPage(0);
+
+            } catch (err) {
+                console.error("Fehler bei der Initialisierung:", err);
+                showError(err.message);
+            }
+        }
 
         async function fetchVideosForPage(pageIndex) {
             const grid = document.getElementById('video-grid');
@@ -78,8 +97,7 @@
 
                 const pageToken = pageTokens[pageIndex] || '';
                 
-                // Nutzt playlistItems (kostet nur 1 Unit statt 100 bei search!)
-                const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${UPLOADS_PLAYLIST_ID}&part=snippet,contentDetails&maxResults=${RESULTS_PER_PAGE}&pageToken=${pageToken}`;
+                const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${uploadsPlaylistId}&part=snippet,contentDetails&maxResults=${RESULTS_PER_PAGE}&pageToken=${pageToken}`;
                 const res = await fetch(playlistUrl);
                 const data = await res.json();
 
@@ -99,7 +117,6 @@
                     hasMorePages = false;
                 }
 
-                // Sammle Video IDs für Statistiken (Aufrufe, Likes)
                 const videoIds = data.items.map(item => item.contentDetails.videoId).join(',');
 
                 const detailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?key=${API_KEY}&id=${videoIds}&part=snippet,contentDetails,statistics`);
@@ -118,19 +135,13 @@
 
             } catch (err) {
                 console.error("Fehler beim Laden der Seite:", err);
-                loading.innerHTML = `
-                    <div class="p-6 bg-slate-900 border border-red-500/30 rounded-xl text-center max-w-lg mx-auto text-red-400">
-                        <i class="fas fa-exclamation-triangle text-3xl mb-3"></i>
-                        <h3 class="text-white font-bold text-lg mb-1">Tageslimit erreicht oder Fehler</h3>
-                        <p class="text-xs text-slate-400">${err.message}</p>
-                        <p class="text-xs text-slate-500 mt-2">Das Kontingent wird täglich von Google zurückgesetzt.</p>
-                    </div>`;
+                showError(err.message);
             }
         }
 
         async function fetchNextPageToken() {
             const lastToken = pageTokens[pageTokens.length - 1];
-            const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${UPLOADS_PLAYLIST_ID}&part=id&maxResults=${RESULTS_PER_PAGE}&pageToken=${lastToken}`;
+            const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${uploadsPlaylistId}&part=id&maxResults=${RESULTS_PER_PAGE}&pageToken=${lastToken}`;
             const res = await fetch(playlistUrl);
             const data = await res.json();
             if (data.nextPageToken) {
@@ -224,9 +235,12 @@
                 const likes = stats.likeCount ? parseInt(stats.likeCount).toLocaleString('de-DE') : '0';
                 const comments = stats.commentCount ? parseInt(stats.commentCount).toLocaleString('de-DE') : '0';
 
+                // Bei playlistItems ist die Video-ID in snippet.resourceId.videoId gespeichert
+                const videoId = snippet.resourceId ? snippet.resourceId.videoId : video.id;
+
                 const card = document.createElement('div');
                 card.className = 'group flex flex-col bg-slate-900/90 border border-slate-800/80 hover:border-purple-500/50 rounded-xl overflow-hidden transition-all duration-300 cursor-pointer hover:shadow-xl hover:shadow-purple-900/20';
-                card.onclick = () => openModal(video.id);
+                card.onclick = () => openModal(videoId);
 
                 card.innerHTML = `
                     <div class="relative aspect-video bg-slate-950 overflow-hidden">
@@ -247,7 +261,7 @@
                                 ${title}
                             </h3>
                             <p class="text-xs text-slate-400 mb-2">${pubDate}</p>
-                            <p class="text-xs text-slate-400 line-clamp-1 mb-3 font-normal">${description}</p>
+                            <p class="text-xs text-slate-400 line-column-1 line-clamp-1 mb-3 font-normal">${description}</p>
                         </div>
 
                         <div class="pt-3 border-t border-slate-800/80 flex items-center gap-3 text-xs text-slate-400 font-medium">
@@ -293,12 +307,20 @@
             modal.classList.add('hidden');
         }
 
+        function showError(message) {
+            document.getElementById('loading').innerHTML = `
+                <div class="p-6 bg-slate-900 border border-red-500/30 rounded-xl text-center max-w-lg mx-auto text-red-400">
+                    <i class="fas fa-exclamation-triangle text-3xl mb-3"></i>
+                    <h3 class="text-white font-bold text-lg mb-1">Fehler beim Laden</h3>
+                    <p class="text-xs text-slate-400">${message}</p>
+                </div>`;
+        }
+
         document.getElementById('video-modal').addEventListener('click', (e) => {
             if (e.target.id === 'video-modal') closeModal();
         });
 
-        // Direkt starten
-        fetchVideosForPage(0);
+        initWidget();
     </script>
 </body>
 </html>
