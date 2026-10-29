@@ -34,19 +34,9 @@
             </div>
         </div>
 
-        <!-- Pagination Bar / Weiterblättern -->
-        <div id="pagination-container" class="mt-8 pt-6 border-t border-slate-800/80 flex items-center justify-between hidden">
-            <button id="prev-btn" onclick="changePage(-1)" class="px-5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 font-medium">
-                <i class="fas fa-chevron-left text-xs"></i> Vorherige Seite
-            </button>
-
-            <span id="page-info" class="text-sm text-slate-400 font-medium">
-                Seite <span id="current-page-num" class="text-white font-bold">1</span>
-            </span>
-
-            <button id="next-btn" onclick="changePage(1)" class="px-5 py-2.5 rounded-xl bg-purple-600 border border-purple-500 text-white hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 font-medium shadow-lg shadow-purple-600/20">
-                Nächste Seite <i class="fas fa-chevron-right text-xs"></i>
-            </button>
+        <!-- Nummerierte Paginierungsleiste -->
+        <div id="pagination-container" class="mt-8 pt-6 border-t border-slate-800/80 flex items-center justify-center gap-2 hidden flex-wrap">
+            <!-- Dynamische Seitenzahlen werden hier per JS eingefügt -->
         </div>
     </div>
 
@@ -70,10 +60,10 @@
         let realChannelId = '';
         let pageTokens = ['']; // Speichert die Seitentokens für das Blättern
         let currentPageIndex = 0;
+        let hasMorePages = true;
 
         async function initWidget() {
             try {
-                // 1. Hole Kanal-ID über den Handle
                 const channelRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?key=${API_KEY}&forHandle=${CHANNEL_HANDLE}&part=id`);
                 const channelData = await channelRes.json();
 
@@ -105,9 +95,14 @@
             loading.classList.remove('hidden');
 
             try {
+                // Falls das Token für diese Seite noch nicht existiert, aber wir dorthin springen wollen, 
+                // müssen wir uns Schritt für Schritt vorangeln.
+                while (pageTokens.length <= pageIndex && hasMorePages) {
+                    await fetchNextPageToken();
+                }
+
                 const pageToken = pageTokens[pageIndex] || '';
                 
-                // 2. Hole 30 Videos für die aktuelle Seite
                 const searchUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${realChannelId}&part=snippet,id&order=date&maxResults=${RESULTS_PER_PAGE}&type=video&pageToken=${pageToken}`;
                 const searchRes = await fetch(searchUrl);
                 const searchData = await searchRes.json();
@@ -120,30 +115,28 @@
                     throw new Error("Keine Videos gefunden.");
                 }
 
-                // Speichere das Token für die nächste Seite, falls vorhanden
-                if (searchData.nextPageToken && pageTokens.length === pageIndex + 1) {
-                    pageTokens.push(searchData.nextPageToken);
+                if (searchData.nextPageToken && !pageTokens.includes(searchData.nextPageToken)) {
+                    if (pageTokens.length === pageIndex + 1) {
+                        pageTokens.push(searchData.nextPageToken);
+                    }
+                } else if (!searchData.nextPageToken) {
+                    hasMorePages = false;
                 }
 
                 const videoIds = searchData.items.map(item => item.id.videoId).join(',');
 
-                // 3. Hole Details (Dauer, Views, Likes, Kommentare)
                 const detailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?key=${API_KEY}&id=${videoIds}&part=snippet,contentDetails,statistics`);
                 const detailsData = await detailsRes.json();
 
                 renderVideos(detailsData.items);
 
-                // UI-Zustand aktualisieren
                 currentPageIndex = pageIndex;
-                document.getElementById('current-page-num').innerText = currentPageIndex + 1;
-                document.getElementById('prev-btn').disabled = (currentPageIndex === 0);
-                document.getElementById('next-btn').disabled = !searchData.nextPageToken;
+                renderPaginationControls();
 
                 loading.classList.add('hidden');
                 grid.classList.remove('hidden');
                 pagination.classList.remove('hidden');
 
-                // Nach dem Blättern nach oben scrollen
                 window.scrollTo({ top: 0, behavior: 'smooth' });
 
             } catch (err) {
@@ -157,11 +150,81 @@
             }
         }
 
-        function changePage(direction) {
-            const newIndex = currentPageIndex + direction;
-            if (newIndex >= 0 && newIndex < pageTokens.length) {
-                fetchVideosForPage(newIndex);
+        async function fetchNextPageToken() {
+            const lastToken = pageTokens[pageTokens.length - 1];
+            const searchUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${realChannelId}&part=id&order=date&maxResults=${RESULTS_PER_PAGE}&type=video&pageToken=${lastToken}`;
+            const res = await fetch(searchUrl);
+            const data = await res.json();
+            if (data.nextPageToken) {
+                pageTokens.push(data.nextPageToken);
+            } else {
+                hasMorePages = false;
             }
+        }
+
+        function renderPaginationControls() {
+            const container = document.getElementById('pagination-container');
+            container.innerHTML = '';
+
+            const totalKnownPages = pageTokens.length + (hasMorePages ? 1 : 0);
+
+            // Zurück-Pfeil (<)
+            const prevBtn = document.createElement('button');
+            prevBtn.className = `w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 flex items-center justify-center transition-all ${currentPageIndex === 0 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800 hover:text-white'}`;
+            prevBtn.innerHTML = `<i class="fas fa-chevron-left text-xs"></i>`;
+            prevBtn.onclick = () => { if (currentPageIndex > 0) fetchVideosForPage(currentPageIndex - 1); };
+            container.appendChild(prevBtn);
+
+            // Intelligente Nummerierung (wie im Beispiel: 1 ... 4 5 6 >)
+            let pagesToShow = [];
+            for (let i = 0; i < totalKnownPages; i++) {
+                if (
+                    i === 0 || 
+                    i === totalKnownPages - 1 || 
+                    (i >= currentPageIndex - 1 && i <= currentPageIndex + 1)
+                ) {
+                    pagesToShow.push(i);
+                } else if (
+                    i === currentPageIndex - 2 || 
+                    i === currentPageIndex + 2
+                ) {
+                    pagesToShow.push('...');
+                }
+            }
+            // Doppelte '...' herausfiltern
+            pagesToShow = pagesToShow.filter((val, idx, arr) => val !== '...' || arr[idx - 1] !== '...');
+
+            pagesToShow.forEach(p => {
+                if (p === '...') {
+                    const dots = document.createElement('span');
+                    dots.className = 'w-10 h-10 flex items-center justify-center text-slate-500 font-bold';
+                    dots.innerText = '...';
+                    container.appendChild(dots);
+                } else {
+                    const pageNum = p;
+                    const btn = document.createElement('button');
+                    const isActive = pageNum === currentPageIndex;
+                    btn.className = `w-10 h-10 rounded-xl border flex items-center justify-center font-medium transition-all ${
+                        isActive 
+                            ? 'bg-slate-100 border-slate-100 text-slate-950 font-bold shadow-md' 
+                            : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`;
+                    btn.innerText = pageNum + 1;
+                    btn.onclick = () => fetchVideosForPage(pageNum);
+                    container.appendChild(btn);
+                }
+            });
+
+            // Weiter-Pfeil (>)
+            const nextBtn = document.createElement('button');
+            nextBtn.className = `w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 flex items-center justify-center transition-all ${!hasMorePages && currentPageIndex === pageTokens.length - 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800 hover:text-white'}`;
+            nextBtn.innerHTML = `<i class="fas fa-chevron-right text-xs"></i>`;
+            nextBtn.onclick = () => {
+                if (currentPageIndex < pageTokens.length - 1 || hasMorePages) {
+                    fetchVideosForPage(currentPageIndex + 1);
+                }
+            };
+            container.appendChild(nextBtn);
         }
 
         function renderVideos(items) {
@@ -210,7 +273,7 @@
                                 ${title}
                             </h3>
                             <p class="text-xs text-slate-400 mb-2">${pubDate}</p>
-                            <p class="text-xs text-slate-400 line-clamp-1 mb-3 font-normal">${description}</p>
+                            <p class="text-xs text-slate-400 line-column-1 line-clamp-1 mb-3 font-normal">${description}</p>
                         </div>
 
                         <div class="pt-3 border-t border-slate-800/80 flex items-center gap-3 text-xs text-slate-400 font-medium">
