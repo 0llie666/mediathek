@@ -54,36 +54,13 @@
 
     <script>
         const API_KEY = 'AIzaSyBbyyj_VFDsgjNK3pu2DAqsX1MHqhFsRps'; 
-        const CHANNEL_HANDLE = 'ollie6662'; 
+        // Die Upload-Playlist ID deines Kanals (leitet sich direkt aus UCanLxec... ab -> UUcanLxec...)
+        const UPLOADS_PLAYLIST_ID = 'UUcanLxec_3PUi9vaxXpk1wKw'; 
         const RESULTS_PER_PAGE = 30; // 3 Spalten x 10 Zeilen
 
-        let realChannelId = '';
-        let pageTokens = ['']; // Speichert die Seitentokens für das Blättern
+        let pageTokens = ['']; 
         let currentPageIndex = 0;
         let hasMorePages = true;
-
-        async function initWidget() {
-            try {
-                const channelRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?key=${API_KEY}&forHandle=${CHANNEL_HANDLE}&part=id`);
-                const channelData = await channelRes.json();
-
-                if (!channelData.items || channelData.items.length === 0) {
-                    throw new Error("Kanal konnte nicht gefunden werden.");
-                }
-
-                realChannelId = channelData.items[0].id;
-                await fetchVideosForPage(0);
-
-            } catch (err) {
-                console.error("Fehler bei der Initialisierung:", err);
-                document.getElementById('loading').innerHTML = `
-                    <div class="p-6 bg-slate-900 border border-red-500/30 rounded-xl text-center max-w-lg mx-auto text-red-400">
-                        <i class="fas fa-exclamation-triangle text-3xl mb-3"></i>
-                        <h3 class="text-white font-bold text-lg mb-1">Fehler beim Laden</h3>
-                        <p class="text-xs text-slate-400">${err.message}</p>
-                    </div>`;
-            }
-        }
 
         async function fetchVideosForPage(pageIndex) {
             const grid = document.getElementById('video-grid');
@@ -95,35 +72,35 @@
             loading.classList.remove('hidden');
 
             try {
-                // Falls das Token für diese Seite noch nicht existiert, aber wir dorthin springen wollen, 
-                // müssen wir uns Schritt für Schritt vorangeln.
                 while (pageTokens.length <= pageIndex && hasMorePages) {
                     await fetchNextPageToken();
                 }
 
                 const pageToken = pageTokens[pageIndex] || '';
                 
-                const searchUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${realChannelId}&part=snippet,id&order=date&maxResults=${RESULTS_PER_PAGE}&type=video&pageToken=${pageToken}`;
-                const searchRes = await fetch(searchUrl);
-                const searchData = await searchRes.json();
+                // Nutzt playlistItems (kostet nur 1 Unit statt 100 bei search!)
+                const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${UPLOADS_PLAYLIST_ID}&part=snippet,contentDetails&maxResults=${RESULTS_PER_PAGE}&pageToken=${pageToken}`;
+                const res = await fetch(playlistUrl);
+                const data = await res.json();
 
-                if (searchData.error) {
-                    throw new Error(searchData.error.message);
+                if (data.error) {
+                    throw new Error(data.error.message);
                 }
 
-                if (!searchData.items || searchData.items.length === 0) {
+                if (!data.items || data.items.length === 0) {
                     throw new Error("Keine Videos gefunden.");
                 }
 
-                if (searchData.nextPageToken && !pageTokens.includes(searchData.nextPageToken)) {
+                if (data.nextPageToken && !pageTokens.includes(data.nextPageToken)) {
                     if (pageTokens.length === pageIndex + 1) {
-                        pageTokens.push(searchData.nextPageToken);
+                        pageTokens.push(data.nextPageToken);
                     }
-                } else if (!searchData.nextPageToken) {
+                } else if (!data.nextPageToken) {
                     hasMorePages = false;
                 }
 
-                const videoIds = searchData.items.map(item => item.id.videoId).join(',');
+                // Sammle Video IDs für Statistiken (Aufrufe, Likes)
+                const videoIds = data.items.map(item => item.contentDetails.videoId).join(',');
 
                 const detailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?key=${API_KEY}&id=${videoIds}&part=snippet,contentDetails,statistics`);
                 const detailsData = await detailsRes.json();
@@ -144,16 +121,17 @@
                 loading.innerHTML = `
                     <div class="p-6 bg-slate-900 border border-red-500/30 rounded-xl text-center max-w-lg mx-auto text-red-400">
                         <i class="fas fa-exclamation-triangle text-3xl mb-3"></i>
-                        <h3 class="text-white font-bold text-lg mb-1">Fehler beim Laden der Seite</h3>
+                        <h3 class="text-white font-bold text-lg mb-1">Tageslimit erreicht oder Fehler</h3>
                         <p class="text-xs text-slate-400">${err.message}</p>
+                        <p class="text-xs text-slate-500 mt-2">Das Kontingent wird täglich von Google zurückgesetzt.</p>
                     </div>`;
             }
         }
 
         async function fetchNextPageToken() {
             const lastToken = pageTokens[pageTokens.length - 1];
-            const searchUrl = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${realChannelId}&part=id&order=date&maxResults=${RESULTS_PER_PAGE}&type=video&pageToken=${lastToken}`;
-            const res = await fetch(searchUrl);
+            const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${UPLOADS_PLAYLIST_ID}&part=id&maxResults=${RESULTS_PER_PAGE}&pageToken=${lastToken}`;
+            const res = await fetch(playlistUrl);
             const data = await res.json();
             if (data.nextPageToken) {
                 pageTokens.push(data.nextPageToken);
@@ -168,14 +146,12 @@
 
             const totalKnownPages = pageTokens.length + (hasMorePages ? 1 : 0);
 
-            // Zurück-Pfeil (<)
             const prevBtn = document.createElement('button');
             prevBtn.className = `w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 flex items-center justify-center transition-all ${currentPageIndex === 0 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800 hover:text-white'}`;
             prevBtn.innerHTML = `<i class="fas fa-chevron-left text-xs"></i>`;
             prevBtn.onclick = () => { if (currentPageIndex > 0) fetchVideosForPage(currentPageIndex - 1); };
             container.appendChild(prevBtn);
 
-            // Intelligente Nummerierung (wie im Beispiel: 1 ... 4 5 6 >)
             let pagesToShow = [];
             for (let i = 0; i < totalKnownPages; i++) {
                 if (
@@ -191,7 +167,6 @@
                     pagesToShow.push('...');
                 }
             }
-            // Doppelte '...' herausfiltern
             pagesToShow = pagesToShow.filter((val, idx, arr) => val !== '...' || arr[idx - 1] !== '...');
 
             pagesToShow.forEach(p => {
@@ -215,7 +190,6 @@
                 }
             });
 
-            // Weiter-Pfeil (>)
             const nextBtn = document.createElement('button');
             nextBtn.className = `w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 flex items-center justify-center transition-all ${!hasMorePages && currentPageIndex === pageTokens.length - 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800 hover:text-white'}`;
             nextBtn.innerHTML = `<i class="fas fa-chevron-right text-xs"></i>`;
@@ -273,7 +247,7 @@
                                 ${title}
                             </h3>
                             <p class="text-xs text-slate-400 mb-2">${pubDate}</p>
-                            <p class="text-xs text-slate-400 line-column-1 line-clamp-1 mb-3 font-normal">${description}</p>
+                            <p class="text-xs text-slate-400 line-clamp-1 mb-3 font-normal">${description}</p>
                         </div>
 
                         <div class="pt-3 border-t border-slate-800/80 flex items-center gap-3 text-xs text-slate-400 font-medium">
@@ -323,7 +297,8 @@
             if (e.target.id === 'video-modal') closeModal();
         });
 
-        initWidget();
+        // Direkt starten
+        fetchVideosForPage(0);
     </script>
 </body>
 </html>
